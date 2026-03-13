@@ -173,6 +173,8 @@ export default function App() {
             setBuild={setBuild}
             askingPrice={askingPrice}
             setAskingPrice={setAskingPrice}
+            setFlips={setFlips}
+            navigateTo={navigateTo}
           />
         )}
         {view === 'tracker' && (

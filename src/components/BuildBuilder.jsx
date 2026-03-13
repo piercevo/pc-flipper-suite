@@ -61,8 +61,9 @@ function CompatBadge({ partKey, allChecks }) {
   )
 }
 
-export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPrice }) {
+export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPrice, setFlips, navigateTo }) {
   const [copied, setCopied] = useState(false)
+  const [logged, setLogged] = useState(false)
 
   const updatePart = (key, field, value) => {
     setBuild(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
@@ -82,6 +83,29 @@ export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPr
       setBuild(DEFAULT_BUILD)
       setAskingPrice('')
     }
+  }
+
+  const logAsFlip = () => {
+    const gpu = build.gpu?.name?.trim() || ''
+    const cpu = build.cpu?.name?.trim() || ''
+    const titleParts = [gpu, cpu].filter(Boolean)
+    const title = titleParts.length > 0 ? titleParts.join(' + ') + ' Build' : 'Custom PC Build'
+    const flip = {
+      id: Date.now(),
+      date: new Date().toISOString().split('T')[0],
+      title,
+      cpu,
+      gpu,
+      paid: totalPaid.toFixed(2),
+      sold: askingPrice,
+      notes: '',
+    }
+    setFlips(prev => [...prev, flip])
+    setLogged(true)
+    setTimeout(() => {
+      setLogged(false)
+      navigateTo('tracker')
+    }, 1200)
   }
 
   const shareCustomerPage = () => {
@@ -244,6 +268,13 @@ export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPr
           <div className="buyer-savings-bar">
             <span className="savings-label">Ready to share:</span>
             <span className="savings-note">Click "Share Customer Page" to copy a buyer-facing link with specs, benchmarks, and pricing.</span>
+            <button
+              className={`btn ${logged ? 'btn-success' : 'btn-primary'} log-flip-btn`}
+              onClick={logAsFlip}
+              disabled={logged}
+            >
+              {logged ? '✓ Logged!' : '📋 Log as Flip'}
+            </button>
           </div>
         )}
       </div>

@@ -466,7 +466,11 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 
 .savings-label { font-weight: 700; }
-.savings-note  { color: var(--text2); }
+.savings-note  { color: var(--text2); flex: 1; }
+
+.log-flip-btn  { margin-left: auto; white-space: nowrap; }
+.btn-success   { background: var(--green); color: #0a0a0a; }
+.btn-success:hover { background: var(--green); }
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 /* COMPATIBILITY CHECKER                                                   */
