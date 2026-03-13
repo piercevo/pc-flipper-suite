@@ -1,0 +1,237 @@
+import { useState } from 'react'
+import { pcppCategoryUrl, amazonUrl, runCompatibilityChecks, getRowChecks, getRowStatus } from '../utils/compatibility'
+import AutocompleteInput from './AutocompleteInput'
+
+const COMPONENTS = [
+  { key: 'cpu',         label: 'CPU',         icon: '⚙️',  placeholder: 'e.g. AMD Ryzen 7 5800X3D' },
+  { key: 'gpu',         label: 'GPU',         icon: '🎮',  placeholder: 'e.g. NVIDIA GeForce RTX 3070' },
+  { key: 'motherboard', label: 'Motherboard', icon: '🔲',  placeholder: 'e.g. ASUS ROG Strix B550-F (AM4, ATX)' },
+  { key: 'ram',         label: 'RAM',         icon: '💾',  placeholder: 'e.g. Corsair Vengeance 32GB DDR4-3200' },
+  { key: 'storage',     label: 'Storage',     icon: '💽',  placeholder: 'e.g. Samsung 980 Pro 1TB NVMe M.2' },
+  { key: 'psu',         label: 'PSU',         icon: '⚡',  placeholder: 'e.g. Corsair RM750x 750W 80+ Gold' },
+  { key: 'cooler',      label: 'CPU Cooler',  icon: '❄️',  placeholder: 'e.g. Noctua NH-D15' },
+  { key: 'case',        label: 'Case',        icon: '🖥️',  placeholder: 'e.g. Fractal Design Meshify 2 (ATX)' },
+  { key: 'os',          label: 'OS',          icon: '🪟',  placeholder: 'e.g. Windows 11 Home OEM' },
+]
+
+const DEFAULT_BUILD = Object.fromEntries(
+  COMPONENTS.map(c => [c.key, { name: '', paid: '' }])
+)
+
+const STATUS_ICON = { ok: '✓', warn: '⚠', error: '✗' }
+const STATUS_LABELS = { ok: 'Compatible', warn: 'Verify', error: 'Conflict' }
+
+function CompatBadge({ partKey, allChecks }) {
+  const [open, setOpen] = useState(false)
+  const status = getRowStatus(partKey, allChecks)
+  const checks = getRowChecks(partKey, allChecks)
+  if (!status) return null
+
+  return (
+    <div className="compat-badge-wrap" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <span className={`inline-compat-dot status-${status}`}>
+        {STATUS_ICON[status]}
+      </span>
+      {open && checks.length > 0 && (
+        <div className="compat-tooltip">
+          {checks.map(c => (
+            <div key={c.id} className={`tooltip-row status-${c.status}`}>
+              <span className="tooltip-icon">{STATUS_ICON[c.status]}</span>
+              <span>{c.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPrice }) {
+  const [copied, setCopied] = useState(false)
+
+  const updatePart = (key, field, value) => {
+    setBuild(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
+  }
+
+  const totalPaid = COMPONENTS.reduce((sum, c) => {
+    const val = parseFloat(build[c.key]?.paid)
+    return sum + (isNaN(val) ? 0 : val)
+  }, 0)
+
+  const askingNum  = parseFloat(askingPrice)
+  const profit     = isNaN(askingNum) ? null : askingNum - totalPaid
+  const profitPct  = profit !== null && totalPaid > 0 ? (profit / totalPaid) * 100 : null
+
+  const clearBuild = () => {
+    if (confirm('Clear all build data?')) {
+      setBuild(DEFAULT_BUILD)
+      setAskingPrice('')
+    }
+  }
+
+  const shareCustomerPage = () => {
+    const data = btoa(JSON.stringify({ build, askingPrice }))
+    const url = `${window.location.origin}${window.location.pathname}#customer?d=${data}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  // Run all compat checks once for the current build
+  const allChecks = runCompatibilityChecks(build)
+  const errorCount = allChecks.filter(c => c.status === 'error').length
+  const warnCount  = allChecks.filter(c => c.status === 'warn').length
+  const okCount    = allChecks.filter(c => c.status === 'ok').length
+
+  return (
+    <div className="builder-container">
+      <div className="builder-header">
+        <div>
+          <h2 className="section-title">Build Builder</h2>
+          <p className="section-sub">Enter component names and costs. Compatibility is checked live as you type.</p>
+        </div>
+        <div className="header-actions">
+          <button className="btn btn-ghost" onClick={clearBuild}>Clear</button>
+          <button className="btn btn-primary" onClick={shareCustomerPage}>
+            {copied ? '✓ Copied!' : '🔗 Share Customer Page'}
+          </button>
+        </div>
+      </div>
+
+      <div className="parts-table">
+        <div className="parts-header-row">
+          <div>Component</div>
+          <div>Part Name</div>
+          <div>What I Paid</div>
+          <div>Links</div>
+          <div>Compat</div>
+        </div>
+
+        {COMPONENTS.map(({ key, label, icon, placeholder }) => {
+          const part = build[key] ?? { name: '', paid: '' }
+          return (
+            <div className="parts-row" key={key}>
+              <div className="part-label">
+                <span className="part-icon">{icon}</span>
+                <span>{label}</span>
+              </div>
+
+              <div className="part-name-cell">
+                <AutocompleteInput
+                  partKey={key}
+                  value={part.name}
+                  onChange={val => updatePart(key, 'name', val)}
+                  placeholder={placeholder}
+                  className="input-mono"
+                />
+              </div>
+
+              <div className="part-paid-cell">
+                <div className="input-prefix-wrap">
+                  <span className="input-prefix">$</span>
+                  <input
+                    className="input-mono input-short"
+                    placeholder="0.00"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={part.paid}
+                    onChange={e => updatePart(key, 'paid', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="part-links-cell">
+                {part.name.trim() ? (
+                  <>
+                    <a href={pcppCategoryUrl(key, part.name)} target="_blank" rel="noopener noreferrer" className="link-badge pcpp">PCPP</a>
+                    <a href={amazonUrl(part.name)} target="_blank" rel="noopener noreferrer" className="link-badge amzn">AMZ</a>
+                  </>
+                ) : (
+                  <span className="link-placeholder">—</span>
+                )}
+              </div>
+
+              <div className="part-compat-cell">
+                <CompatBadge partKey={key} allChecks={allChecks} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Inline Compat Summary */}
+      {allChecks.length > 0 && (
+        <div className="compat-inline-summary">
+          <div className="compat-summary-left">
+            <span className="compat-summary-title">Compatibility</span>
+            <div className="compat-summary-badges">
+              {okCount > 0    && <span className="summary-badge ok">{okCount} OK</span>}
+              {warnCount > 0  && <span className="summary-badge warn">{warnCount} Warning{warnCount > 1 ? 's' : ''}</span>}
+              {errorCount > 0 && <span className="summary-badge error">{errorCount} Conflict{errorCount > 1 ? 's' : ''}</span>}
+            </div>
+          </div>
+          <div className="compat-check-list">
+            {allChecks.map(c => (
+              <div key={c.id} className={`compat-inline-row status-${c.status}`}>
+                <span className={`compat-inline-icon status-${c.status}`}>{STATUS_ICON[c.status]}</span>
+                <div className="compat-inline-body">
+                  <span className="compat-inline-label">{c.label}</span>
+                  <span className="compat-inline-detail">{c.detail}</span>
+                </div>
+                <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="compat-inline-source">
+                  ↗
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Profit Calculator */}
+      <div className="profit-panel">
+        <h3 className="panel-title">Profit Calculator</h3>
+        <div className="profit-grid">
+          <div className="profit-stat">
+            <span className="stat-label">Total Invested</span>
+            <span className="stat-value cost">${totalPaid.toFixed(2)}</span>
+          </div>
+          <div className="profit-stat asking">
+            <span className="stat-label">Asking Price</span>
+            <div className="input-prefix-wrap">
+              <span className="input-prefix asking-prefix">$</span>
+              <input
+                className="input-mono input-asking"
+                placeholder="0.00"
+                type="number"
+                min="0"
+                step="1"
+                value={askingPrice}
+                onChange={e => setAskingPrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="profit-stat">
+            <span className="stat-label">Profit</span>
+            <span className={`stat-value ${profit === null ? '' : profit >= 0 ? 'green' : 'red'}`}>
+              {profit === null ? '—' : `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`}
+            </span>
+          </div>
+          <div className="profit-stat">
+            <span className="stat-label">Margin</span>
+            <span className={`stat-value ${profitPct === null ? '' : profitPct >= 20 ? 'green' : profitPct >= 0 ? 'yellow' : 'red'}`}>
+              {profitPct === null ? '—' : `${profitPct.toFixed(1)}%`}
+            </span>
+          </div>
+        </div>
+        {profit !== null && askingNum > 0 && (
+          <div className="buyer-savings-bar">
+            <span className="savings-label">Ready to share:</span>
+            <span className="savings-note">Click "Share Customer Page" to copy a buyer-facing link with specs, benchmarks, and pricing.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
