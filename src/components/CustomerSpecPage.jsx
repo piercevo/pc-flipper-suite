@@ -6,16 +6,26 @@ import {
 } from '../utils/compatibility'
 import DB from '../data/compatibility-db.json'
 
-// Find a pre-saved benchmark video ID for the given GPU name
+// Strip brand prefixes for flexible matching
+function normalizeGpuName(name) {
+  return name.replace(/^(NVIDIA\s+GeForce|AMD\s+Radeon|AMD\s+|NVIDIA\s+)/i, '').trim().toUpperCase()
+}
+
+// Find a pre-saved benchmark video ID for the given GPU name.
+// Matches either full name ("NVIDIA GeForce RTX 3060") or short name ("RTX 3060").
 function getPreSavedVideoId(gpuName) {
   if (!gpuName?.trim()) return null
   const input = gpuName.trim().toUpperCase()
+  const inputNorm = normalizeGpuName(gpuName)
   let best = null
   let bestLen = 0
   for (const entry of DB.gpus) {
     if (!entry.benchmarkVideoId) continue
     const key = entry.name.toUpperCase()
-    if (input.includes(key) && key.length > bestLen) {
+    const keyNorm = normalizeGpuName(entry.name)
+    const matches = input.includes(key) || input.includes(keyNorm) ||
+                    inputNorm.includes(keyNorm) || inputNorm.includes(key)
+    if (matches && key.length > bestLen) {
       best = entry.benchmarkVideoId
       bestLen = key.length
     }
@@ -61,7 +71,7 @@ async function fetchYoutubeVideoId(query, apiKey) {
 function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
   const preSavedId = getPreSavedVideoId(gpuName)
 
-  const [videoId, setVideoId]   = useState(preSavedId)
+  const [videoId, setVideoId]   = useState(null)
   const [loading, setLoading]   = useState(false)
   const [apiError, setApiError] = useState(null)
 
@@ -75,8 +85,12 @@ function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
   useEffect(() => {
-    // Skip API call if we already have a pre-saved video ID
-    if (preSavedId) return
+    // Use pre-saved video ID if available — no API call needed
+    if (preSavedId) {
+      setVideoId(preSavedId)
+      setLoading(false)
+      return
+    }
     if (!youtubeApiKey || !apiQuery || isLocalhost) return
     setLoading(true)
     setVideoId(null)
