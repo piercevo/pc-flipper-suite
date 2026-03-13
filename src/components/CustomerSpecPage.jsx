@@ -7,27 +7,29 @@ import {
 import DB from '../data/compatibility-db.json'
 
 // Strip brand prefixes for flexible matching
-function normalizeGpuName(name) {
-  return name.replace(/^(NVIDIA\s+GeForce|AMD\s+Radeon|AMD\s+|NVIDIA\s+)/i, '').trim().toUpperCase()
+function normalizeName(name) {
+  return name.replace(/^(NVIDIA\s+GeForce|AMD\s+Radeon|AMD\s+Ryzen\s+\d+\s+|AMD\s+|NVIDIA\s+|Intel\s+Core\s+)/i, '').trim().toUpperCase()
 }
 
-// Find a pre-saved benchmark video ID for the given GPU name.
-// Matches either full name ("NVIDIA GeForce RTX 3060") or short name ("RTX 3060").
-function getPreSavedVideoId(gpuName) {
+// Find a pre-saved benchmark video ID for a GPU+CPU combo from the benchmarks[] table.
+// Uses flexible substring matching on normalized names (strips brand prefixes).
+function getComboVideoId(gpuName, cpuName) {
   if (!gpuName?.trim()) return null
-  const input = gpuName.trim().toUpperCase()
-  const inputNorm = normalizeGpuName(gpuName)
+  const gpuNorm = normalizeName(gpuName)
+  const cpuNorm = normalizeName(cpuName || '')
   let best = null
-  let bestLen = 0
-  for (const entry of DB.gpus) {
-    if (!entry.benchmarkVideoId) continue
-    const key = entry.name.toUpperCase()
-    const keyNorm = normalizeGpuName(entry.name)
-    const matches = input.includes(key) || input.includes(keyNorm) ||
-                    inputNorm.includes(keyNorm) || inputNorm.includes(key)
-    if (matches && key.length > bestLen) {
-      best = entry.benchmarkVideoId
-      bestLen = key.length
+  let bestScore = 0
+  for (const entry of DB.benchmarks) {
+    const entryGpu = entry.gpu.toUpperCase()
+    const entryCpu = entry.cpu.toUpperCase()
+    const gpuMatch = gpuNorm.includes(entryGpu) || entryGpu.includes(gpuNorm)
+    const cpuMatch = !cpuNorm || cpuNorm.includes(entryCpu) || entryCpu.includes(cpuNorm)
+    if (gpuMatch && cpuMatch) {
+      const score = entryGpu.length + entryCpu.length
+      if (score > bestScore) {
+        best = entry.videoId
+        bestScore = score
+      }
     }
   }
   return best
@@ -69,7 +71,7 @@ async function fetchYoutubeVideoId(query, apiKey) {
 }
 
 function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
-  const preSavedId = getPreSavedVideoId(gpuName)
+  const comboId = getComboVideoId(gpuName, cpuName)
 
   const [videoId, setVideoId]   = useState(null)
   const [loading, setLoading]   = useState(false)
@@ -85,20 +87,24 @@ function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
   useEffect(() => {
-    // Use pre-saved video ID if available — no API call needed
-    if (preSavedId) {
-      setVideoId(preSavedId)
+    // Use pre-saved GPU+CPU combo video — no API call needed
+    if (comboId) {
+      setVideoId(comboId)
       setLoading(false)
       return
     }
-    if (!youtubeApiKey || !apiQuery || isLocalhost) return
+    if (!youtubeApiKey || !apiQuery || isLocalhost) {
+      setVideoId(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setVideoId(null)
     setApiError(null)
     fetchYoutubeVideoId(apiQuery, youtubeApiKey)
       .then(id => { setVideoId(id); setLoading(false) })
       .catch(err => { setApiError(err.message); setLoading(false) })
-  }, [youtubeApiKey, apiQuery, isLocalhost, preSavedId])
+  }, [youtubeApiKey, apiQuery, isLocalhost, comboId])
 
   if (!queryLabel) return null
 
