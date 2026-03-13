@@ -1,7 +1,44 @@
+// ─── JSON Knowledge Base Lookup ────────────────────────────────────────────
+
+import DB from '../data/compatibility-db.json'
+
+// Strip common brand prefixes so "AMD Ryzen 7 5800X3D" → "Ryzen 7 5800X3D"
+function normalizePartName(name) {
+  return name
+    .replace(/^(NVIDIA\s+GeForce|AMD\s+Radeon|Intel\s+Core|AMD\s+|Intel\s+)/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+}
+
+// Fuzzy DB lookup: find the entry whose name is a substring of the input,
+// preferring the longest match (avoids "RTX 3060" matching "RTX 3060 Ti").
+function dbLookup(entries, inputName) {
+  if (!inputName?.trim()) return null
+  const input = inputName.trim().toUpperCase()
+  let best = null
+  let bestLen = 0
+  for (const entry of entries) {
+    const key = entry.name.toUpperCase()
+    const keyNorm = normalizePartName(entry.name)
+    // Match if either the full name or the normalized name appears in the input
+    if ((input.includes(key) || input.includes(keyNorm)) && key.length > bestLen) {
+      best = entry
+      bestLen = key.length
+    }
+  }
+  return best
+}
+
 // ─── Socket Detection ──────────────────────────────────────────────────────
 
 export function extractCPUSocket(name) {
   if (!name) return null
+
+  // DB-first lookup
+  const entry = dbLookup(DB.cpus, name)
+  if (entry?.socket) return entry.socket
+
   const n = name.toUpperCase()
 
   if (n.includes('AM5')) return 'AM5'
@@ -45,6 +82,22 @@ export function extractCPUSocket(name) {
 
 export function extractMoboSocket(name) {
   if (!name) return null
+
+  // DB-first: look up chipset code in name
+  if (name?.trim()) {
+    const nu = name.toUpperCase()
+    let bestChipset = null
+    let bestLen = 0
+    for (const c of DB.chipsets) {
+      const code = c.code.toUpperCase()
+      if (nu.includes(code) && code.length > bestLen) {
+        bestChipset = c
+        bestLen = code.length
+      }
+    }
+    if (bestChipset?.socket) return bestChipset.socket
+  }
+
   const n = name.toUpperCase()
 
   if (n.includes('AM5')) return 'AM5'
@@ -92,11 +145,18 @@ export function extractMoboRAMType(name) {
   if (n.includes('DDR4')) return 'DDR4'
   if (n.includes('DDR3')) return 'DDR3'
 
-  // Infer from chipset — AM5 and 12th+ Intel native DDR5 (though some boards support both)
-  const am5chipsets = ['X670E', 'X670', 'B650E', 'B650', 'A620']
-  for (const c of am5chipsets) if (n.includes(c)) return 'DDR5'
+  // DB-first: chipset lookup for RAM type
+  let bestChipset = null
+  let bestLen = 0
+  for (const c of DB.chipsets) {
+    const code = c.code.toUpperCase()
+    if (n.includes(code) && code.length > bestLen) {
+      bestChipset = c
+      bestLen = code.length
+    }
+  }
+  if (bestChipset?.ramType) return bestChipset.ramType
 
-  // Z790 can be DDR4 or DDR5; can't reliably infer
   return null
 }
 
@@ -105,6 +165,10 @@ export function extractMoboRAMType(name) {
 export function extractCPUTDP(name) {
   if (!name) return null
   const n = name.toUpperCase()
+
+  // DB-first lookup
+  const entry = dbLookup(DB.cpus, name)
+  if (entry?.tdp) return entry.tdp
 
   // Look for explicit TDP in name (rare, but support "65W", "125W" etc.)
   const tdpMatch = n.match(/(\d{2,3})\s*W\b/)
@@ -135,6 +199,10 @@ export function extractCPUTDP(name) {
 export function extractGPUTDP(name) {
   if (!name) return null
   const n = name.toUpperCase()
+
+  // DB-first lookup
+  const entry = dbLookup(DB.gpus, name)
+  if (entry?.tdp) return entry.tdp
 
   const gpuMap = [
     // NVIDIA 40 series
@@ -181,6 +249,10 @@ export function extractPSUWattage(name) {
 export function extractCoolerTDP(name) {
   if (!name) return null
   const n = name.toUpperCase()
+
+  // DB-first lookup
+  const entry = dbLookup(DB.coolers, name)
+  if (entry?.tdp) return entry.tdp
 
   // Look for explicit "200W TDP" type patterns
   const tdpMatch = n.match(/(\d{2,3})\s*W/)
