@@ -4,6 +4,24 @@ import {
   youtubeBenchmarkSearchUrl, youtubeBenchmarkApiQuery,
   shortPartName, runCompatibilityChecks,
 } from '../utils/compatibility'
+import DB from '../data/compatibility-db.json'
+
+// Find a pre-saved benchmark video ID for the given GPU name
+function getPreSavedVideoId(gpuName) {
+  if (!gpuName?.trim()) return null
+  const input = gpuName.trim().toUpperCase()
+  let best = null
+  let bestLen = 0
+  for (const entry of DB.gpus) {
+    if (!entry.benchmarkVideoId) continue
+    const key = entry.name.toUpperCase()
+    if (input.includes(key) && key.length > bestLen) {
+      best = entry.benchmarkVideoId
+      bestLen = key.length
+    }
+  }
+  return best
+}
 
 const COMPONENTS = [
   { key: 'cpu',         label: 'Processor (CPU)',     icon: '⚙️'  },
@@ -41,7 +59,9 @@ async function fetchYoutubeVideoId(query, apiKey) {
 }
 
 function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
-  const [videoId, setVideoId]   = useState(null)
+  const preSavedId = getPreSavedVideoId(gpuName)
+
+  const [videoId, setVideoId]   = useState(preSavedId)
   const [loading, setLoading]   = useState(false)
   const [apiError, setApiError] = useState(null)
 
@@ -55,6 +75,8 @@ function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
   useEffect(() => {
+    // Skip API call if we already have a pre-saved video ID
+    if (preSavedId) return
     if (!youtubeApiKey || !apiQuery || isLocalhost) return
     setLoading(true)
     setVideoId(null)
@@ -62,7 +84,7 @@ function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
     fetchYoutubeVideoId(apiQuery, youtubeApiKey)
       .then(id => { setVideoId(id); setLoading(false) })
       .catch(err => { setApiError(err.message); setLoading(false) })
-  }, [youtubeApiKey, apiQuery, isLocalhost])
+  }, [youtubeApiKey, apiQuery, isLocalhost, preSavedId])
 
   if (!queryLabel) return null
 
