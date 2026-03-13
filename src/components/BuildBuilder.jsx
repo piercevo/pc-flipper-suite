@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { pcppCategoryUrl, amazonUrl, runCompatibilityChecks, getRowChecks, getRowStatus } from '../utils/compatibility'
 import AutocompleteInput from './AutocompleteInput'
 
@@ -23,24 +24,38 @@ const STATUS_LABELS = { ok: 'Compatible', warn: 'Verify', error: 'Conflict' }
 
 function CompatBadge({ partKey, allChecks }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos]   = useState({ top: 0, left: 0 })
+  const dotRef          = useRef(null)
   const status = getRowStatus(partKey, allChecks)
   const checks = getRowChecks(partKey, allChecks)
   if (!status) return null
 
+  const handleMouseEnter = () => {
+    if (dotRef.current) {
+      const r = dotRef.current.getBoundingClientRect()
+      setPos({ top: r.top + r.height / 2, left: r.right + 10 })
+    }
+    setOpen(true)
+  }
+
   return (
-    <div className="compat-badge-wrap" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <span className={`inline-compat-dot status-${status}`}>
+    <div className="compat-badge-wrap" onMouseEnter={handleMouseEnter} onMouseLeave={() => setOpen(false)}>
+      <span ref={dotRef} className={`inline-compat-dot status-${status}`}>
         {STATUS_ICON[status]}
       </span>
-      {open && checks.length > 0 && (
-        <div className="compat-tooltip">
+      {open && checks.length > 0 && createPortal(
+        <div
+          className="compat-tooltip"
+          style={{ position: 'fixed', top: pos.top, left: pos.left, transform: 'translateY(-50%)', zIndex: 9999 }}
+        >
           {checks.map(c => (
             <div key={c.id} className={`tooltip-row status-${c.status}`}>
               <span className="tooltip-icon">{STATUS_ICON[c.status]}</span>
               <span>{c.detail}</span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

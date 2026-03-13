@@ -51,15 +51,18 @@ function BenchmarkSection({ gpuName, cpuName, youtubeApiKey }) {
   const searchUrl   = youtubeBenchmarkSearchUrl(gpuName, cpuName)
   const apiQuery    = youtubeBenchmarkApiQuery(gpuName, cpuName)
 
+  const isLocalhost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
   useEffect(() => {
-    if (!youtubeApiKey || !apiQuery) return
+    if (!youtubeApiKey || !apiQuery || isLocalhost) return
     setLoading(true)
     setVideoId(null)
     setApiError(null)
     fetchYoutubeVideoId(apiQuery, youtubeApiKey)
       .then(id => { setVideoId(id); setLoading(false) })
       .catch(err => { setApiError(err.message); setLoading(false) })
-  }, [youtubeApiKey, apiQuery])
+  }, [youtubeApiKey, apiQuery, isLocalhost])
 
   if (!queryLabel) return null
 

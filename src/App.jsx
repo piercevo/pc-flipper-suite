@@ -38,6 +38,9 @@ function loadFromStorage(key, fallback) {
 
 function SettingsModal({ apiKey, onSave, onClose }) {
   const [draft, setDraft] = useState(apiKey)
+  const envKey = import.meta.env.VITE_YOUTUBE_API_KEY ?? ''
+  const usingEnvKey = !loadFromStorage('pfs_yt_key', '') && !!envKey
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -48,10 +51,17 @@ function SettingsModal({ apiKey, onSave, onClose }) {
 
         <div className="modal-section">
           <label className="modal-label">YouTube Data API v3 Key</label>
-          <p className="modal-hint">
-            Enables real embedded benchmark videos on the Customer Page.
-            Without it, a YouTube search link is shown instead.
-          </p>
+          {usingEnvKey ? (
+            <p className="modal-hint env-key-notice">
+              ✓ Key is configured via environment variable — customers will see embedded benchmark videos automatically.
+              Enter a value below only if you want to override it.
+            </p>
+          ) : (
+            <p className="modal-hint">
+              Enables real embedded benchmark videos on the Customer Page.
+              Without it, a YouTube search link is shown instead.
+            </p>
+          )}
           <input
             className="input-mono modal-input"
             placeholder="AIza..."
@@ -89,7 +99,13 @@ export default function App() {
   const [build, setBuild]             = useState(() => loadFromStorage('pfs_build', DEFAULT_BUILD))
   const [askingPrice, setAskingPrice] = useState(() => loadFromStorage('pfs_asking', ''))
   const [flips, setFlips]             = useState(() => loadFromStorage('pfs_flips', []))
-  const [youtubeApiKey, setYoutubeApiKey] = useState(() => loadFromStorage('pfs_yt_key', ''))
+  // Use localStorage override if set, otherwise fall back to the env var baked in at build time.
+  // This means customers who open a shared link get the embedded video automatically —
+  // the env var is bundled into the deployed build on Vercel.
+  const [youtubeApiKey, setYoutubeApiKey] = useState(() => {
+    const stored = loadFromStorage('pfs_yt_key', '')
+    return stored || (import.meta.env.VITE_YOUTUBE_API_KEY ?? '')
+  })
   const [showSettings, setShowSettings]   = useState(false)
 
   useEffect(() => { localStorage.setItem('pfs_build',   JSON.stringify(build)) },         [build])
