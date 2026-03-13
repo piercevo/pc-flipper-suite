@@ -138,7 +138,7 @@
     { "name": "NVIDIA GeForce RTX 3070",          "tdp": 220 },
     { "name": "NVIDIA GeForce RTX 3060 Ti",       "tdp": 200 },
     { "name": "NVIDIA GeForce RTX 3060 12GB",     "tdp": 170 },
-    { "name": "NVIDIA GeForce RTX 3060",          "tdp": 170, "benchmarkVideoId": "3c-RoDtQdJ8" },
+    { "name": "NVIDIA GeForce RTX 3060",          "tdp": 170, "benchmarkVideoId": "3C-RoDtqdJ8" },
     { "name": "NVIDIA GeForce RTX 3050",          "tdp": 130 },
 
     { "name": "NVIDIA GeForce RTX 2080 Ti",       "tdp": 250 },
