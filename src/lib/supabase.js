@@ -3,10 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// If env vars aren't set yet, run in offline (localStorage-only) mode.
-// The app will work normally — just no cross-device sync or auth.
-export const supabaseReady = !!(url && key)
+const isValidUrl = (s) => {
+  try { return s && new URL(s).hostname.endsWith('supabase.co') } catch { return false }
+}
 
-export const supabase = supabaseReady
-  ? createClient(url, key)
-  : null
+// Only initialize if both vars are present and the URL looks correct.
+// If misconfigured the app runs in localStorage-only mode — no crash.
+export const supabaseReady = isValidUrl(url) && !!(key)
+
+export const supabase = supabaseReady ? createClient(url, key) : null
