@@ -197,8 +197,8 @@ export default function CustomerSpecPage({ build: liveBuild, askingPrice: liveAs
   const gpuName = build.gpu?.name?.trim()
   const cpuName = build.cpu?.name?.trim()
 
-  // Run compat checks for the customer page
-  const compatChecks = runCompatibilityChecks(build)
+  // Run compat checks for the customer page — exclude case/mobo form factor check
+  const compatChecks = runCompatibilityChecks(build).filter(c => c.id !== 'formfactor')
   const hasConflicts = compatChecks.some(c => c.status === 'error')
   const allCompatOk  = compatChecks.length > 0 && compatChecks.every(c => c.status === 'ok')
 
@@ -376,7 +376,7 @@ export default function CustomerSpecPage({ build: liveBuild, askingPrice: liveAs
                   <span className="cta-label">Asking Price</span>
                   <span className="cta-price">${asking.toFixed(0)}</span>
                 </div>
-                <div className="cta-vs">Verify retail prices for every component via the links above →</div>
+                <div className="cta-vs">Verify retail prices for every component via the links below →</div>
               </div>
             </div>
           </div>
