@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import BuildBuilder from './components/BuildBuilder'
 import FlipTracker from './components/FlipTracker'
 import CustomerSpecPage from './components/CustomerSpecPage'
 import InventoryTracker from './components/InventoryTracker'
+import AuthGate from './components/AuthGate'
+import { supabase } from './lib/supabase'
 
 const DEFAULT_BUILD = {
   cpu:         { name: '', paid: '' },
@@ -29,7 +31,8 @@ const NAV_TABS = [
   { id: 'customer',  label: 'Customer Page',  icon: '🛍️' },
 ]
 
-function loadFromStorage(key, fallback) {
+// Read from localStorage as a fast initial value while Supabase loads
+function fromStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key)
     return raw ? JSON.parse(raw) : fallback
@@ -40,8 +43,8 @@ function loadFromStorage(key, fallback) {
 
 function SettingsModal({ apiKey, onSave, onClose }) {
   const [draft, setDraft] = useState(apiKey)
-  const envKey = import.meta.env.VITE_YOUTUBE_API_KEY ?? ''
-  const usingEnvKey = !loadFromStorage('pfs_yt_key', '') && !!envKey
+  const envKey      = import.meta.env.VITE_YOUTUBE_API_KEY ?? ''
+  const usingEnvKey = !fromStorage('pfs_yt_key', '') && !!envKey
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -97,26 +100,116 @@ function SettingsModal({ apiKey, onSave, onClose }) {
 }
 
 export default function App() {
-  const [view, setView]               = useState(getInitialView)
-  const [build, setBuild]             = useState(() => loadFromStorage('pfs_build', DEFAULT_BUILD))
-  const [askingPrice, setAskingPrice] = useState(() => loadFromStorage('pfs_asking', ''))
-  const [flips, setFlips]             = useState(() => loadFromStorage('pfs_flips', []))
-  const [inventory, setInventory]     = useState(() => loadFromStorage('pfs_inventory', []))
-  // Use localStorage override if set, otherwise fall back to the env var baked in at build time.
-  // This means customers who open a shared link get the embedded video automatically —
-  // the env var is bundled into the deployed build on Vercel.
+  // ── Auth ──────────────────────────────────────────────────────────────
+  const [user,        setUser]        = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(false)
+  const [syncing,     setSyncing]     = useState(false)
+
+  // ── App state (seeded from localStorage for instant render) ───────────
+  const [view,         setView]         = useState(getInitialView)
+  const [build,        setBuild]        = useState(() => fromStorage('pfs_build',   DEFAULT_BUILD))
+  const [askingPrice,  setAskingPrice]  = useState(() => fromStorage('pfs_asking',  ''))
+  const [flips,        setFlips]        = useState(() => fromStorage('pfs_flips',   []))
+  const [inventory,    setInventory]    = useState(() => fromStorage('pfs_inventory', []))
   const [youtubeApiKey, setYoutubeApiKey] = useState(() => {
-    const stored = loadFromStorage('pfs_yt_key', '')
+    const stored = fromStorage('pfs_yt_key', '')
     return stored || (import.meta.env.VITE_YOUTUBE_API_KEY ?? '')
   })
-  const [showSettings, setShowSettings]   = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
-  useEffect(() => { localStorage.setItem('pfs_build',   JSON.stringify(build)) },         [build])
-  useEffect(() => { localStorage.setItem('pfs_asking',  JSON.stringify(askingPrice)) },   [askingPrice])
-  useEffect(() => { localStorage.setItem('pfs_flips',     JSON.stringify(flips)) },       [flips])
-  useEffect(() => { localStorage.setItem('pfs_inventory', JSON.stringify(inventory)) }, [inventory])
-  useEffect(() => { localStorage.setItem('pfs_yt_key',  JSON.stringify(youtubeApiKey)) }, [youtubeApiKey])
+  // ── Auth listener ─────────────────────────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
+  // ── Load data from Supabase when user logs in ─────────────────────────
+  useEffect(() => {
+    if (!user) return
+    setDataLoading(true)
+    supabase
+      .from('user_data')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          // Existing user — load their saved data
+          setBuild(data.build       || DEFAULT_BUILD)
+          setAskingPrice(data.asking_price ?? '')
+          setFlips(data.flips       || [])
+          setInventory(data.inventory || [])
+          const ytKey = data.yt_key || (import.meta.env.VITE_YOUTUBE_API_KEY ?? '')
+          setYoutubeApiKey(ytKey)
+        } else {
+          // First-time login — migrate any existing localStorage data
+          const localBuild     = fromStorage('pfs_build',     null)
+          const localAsking    = fromStorage('pfs_asking',    '')
+          const localFlips     = fromStorage('pfs_flips',     [])
+          const localInventory = fromStorage('pfs_inventory', [])
+          const localYtKey     = fromStorage('pfs_yt_key',    '')
+          if (localBuild)               setBuild(localBuild)
+          if (localAsking)              setAskingPrice(localAsking)
+          if (localFlips.length)        setFlips(localFlips)
+          if (localInventory.length)    setInventory(localInventory)
+          if (localYtKey)               setYoutubeApiKey(localYtKey)
+        }
+        setDataLoading(false)
+      })
+  }, [user])
+
+  // ── Sync build + asking to Supabase (debounced — changes on every key) ─
+  useEffect(() => {
+    if (!user || dataLoading) return
+    const t = setTimeout(() => {
+      setSyncing(true)
+      supabase.from('user_data')
+        .upsert({ user_id: user.id, build, asking_price: askingPrice, updated_at: new Date().toISOString() })
+        .then(() => setSyncing(false))
+    }, 800)
+    return () => clearTimeout(t)
+  }, [build, askingPrice, user, dataLoading])
+
+  // ── Sync flips to Supabase ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!user || dataLoading) return
+    setSyncing(true)
+    supabase.from('user_data')
+      .upsert({ user_id: user.id, flips, updated_at: new Date().toISOString() })
+      .then(() => setSyncing(false))
+  }, [flips, user, dataLoading])
+
+  // ── Sync inventory to Supabase ─────────────────────────────────────────
+  useEffect(() => {
+    if (!user || dataLoading) return
+    setSyncing(true)
+    supabase.from('user_data')
+      .upsert({ user_id: user.id, inventory, updated_at: new Date().toISOString() })
+      .then(() => setSyncing(false))
+  }, [inventory, user, dataLoading])
+
+  // ── Sync YouTube key to Supabase ───────────────────────────────────────
+  useEffect(() => {
+    if (!user || dataLoading) return
+    supabase.from('user_data')
+      .upsert({ user_id: user.id, yt_key: youtubeApiKey, updated_at: new Date().toISOString() })
+  }, [youtubeApiKey, user, dataLoading])
+
+  // ── Keep localStorage in sync as a local cache ─────────────────────────
+  useEffect(() => { localStorage.setItem('pfs_build',      JSON.stringify(build))        }, [build])
+  useEffect(() => { localStorage.setItem('pfs_asking',     JSON.stringify(askingPrice))  }, [askingPrice])
+  useEffect(() => { localStorage.setItem('pfs_flips',      JSON.stringify(flips))        }, [flips])
+  useEffect(() => { localStorage.setItem('pfs_inventory',  JSON.stringify(inventory))    }, [inventory])
+  useEffect(() => { localStorage.setItem('pfs_yt_key',     JSON.stringify(youtubeApiKey))}, [youtubeApiKey])
+
+  // ── Hash change listener ───────────────────────────────────────────────
   useEffect(() => {
     const onHash = () => {
       if (window.location.hash.startsWith('#customer')) setView('customer')
@@ -130,7 +223,18 @@ export default function App() {
     if (id !== 'customer') window.location.hash = ''
   }
 
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }
+
   const isCustomerView = view === 'customer' && window.location.hash.startsWith('#customer?d=')
+
+  // Show a blank screen while checking auth (avoids flash of login page)
+  if (authLoading) return <div className="auth-gate"><div className="auth-loading">⚡</div></div>
+
+  // Show login page for non-customer views when not signed in
+  if (!user && !isCustomerView) return <AuthGate />
 
   return (
     <div className="app-root">
@@ -168,46 +272,63 @@ export default function App() {
               <span>⚙</span>
               <span className="nav-label">Settings</span>
             </button>
-            <div className="footer-note">Data stored locally.</div>
+            {user && (
+              <div className="sidebar-user">
+                <span className="user-email" title={user.email}>{user.email}</span>
+                <button className="signout-btn" onClick={signOut}>Sign out</button>
+              </div>
+            )}
+            <div className="footer-note">
+              {syncing ? '↑ Syncing…' : '✓ Synced'}
+            </div>
           </div>
         </nav>
       )}
 
       <main className={`main-content ${isCustomerView ? 'fullpage' : ''}`}>
-        {view === 'builder' && (
-          <BuildBuilder
-            build={build}
-            setBuild={setBuild}
-            askingPrice={askingPrice}
-            setAskingPrice={setAskingPrice}
-            setFlips={setFlips}
-            navigateTo={navigateTo}
-            inventory={inventory}
-            setInventory={setInventory}
-          />
-        )}
-        {view === 'tracker' && (
-          <FlipTracker
-            flips={flips}
-            setFlips={setFlips}
-            inventory={inventory}
-            setInventory={setInventory}
-          />
-        )}
-        {view === 'inventory' && (
-          <InventoryTracker
-            inventory={inventory}
-            setInventory={setInventory}
-            navigateTo={navigateTo}
-            setBuild={setBuild}
-          />
-        )}
-        {view === 'customer' && (
-          <CustomerSpecPage
-            build={build}
-            askingPrice={askingPrice}
-            youtubeApiKey={youtubeApiKey}
-          />
+        {dataLoading ? (
+          <div className="data-loading">
+            <div className="data-loading-spinner" />
+            <span>Loading your data…</span>
+          </div>
+        ) : (
+          <>
+            {view === 'builder' && (
+              <BuildBuilder
+                build={build}
+                setBuild={setBuild}
+                askingPrice={askingPrice}
+                setAskingPrice={setAskingPrice}
+                setFlips={setFlips}
+                navigateTo={navigateTo}
+                inventory={inventory}
+                setInventory={setInventory}
+              />
+            )}
+            {view === 'tracker' && (
+              <FlipTracker
+                flips={flips}
+                setFlips={setFlips}
+                inventory={inventory}
+                setInventory={setInventory}
+              />
+            )}
+            {view === 'inventory' && (
+              <InventoryTracker
+                inventory={inventory}
+                setInventory={setInventory}
+                navigateTo={navigateTo}
+                setBuild={setBuild}
+              />
+            )}
+            {view === 'customer' && (
+              <CustomerSpecPage
+                build={build}
+                askingPrice={askingPrice}
+                youtubeApiKey={youtubeApiKey}
+              />
+            )}
+          </>
         )}
       </main>
 
