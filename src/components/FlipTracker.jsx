@@ -36,7 +36,7 @@ function computeComponentTotal(form) {
   }, 0)
 }
 
-export default function FlipTracker({ flips, setFlips }) {
+export default function FlipTracker({ flips, setFlips, inventory, setInventory }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [sortKey, setSortKey] = useState('date')
@@ -50,13 +50,31 @@ export default function FlipTracker({ flips, setFlips }) {
     const componentTotal = computeComponentTotal(form)
     const finalPaid = componentTotal > 0 ? componentTotal.toFixed(2) : form.paid
     if (!finalPaid) return
-    const flipData = { ...form, paid: finalPaid }
+    const flipId   = editId !== null ? editId : Date.now()
+    const flipData = { ...form, paid: finalPaid, id: flipId }
     if (editId !== null) {
-      setFlips(prev => prev.map(f => f.id === editId ? { ...flipData, id: editId } : f))
+      setFlips(prev => prev.map(f => f.id === editId ? flipData : f))
       setEditId(null)
     } else {
-      setFlips(prev => [...prev, { ...flipData, id: Date.now() }])
+      setFlips(prev => [...prev, flipData])
     }
+
+    // Auto-mark matching "In Build" inventory items as Sold
+    if (inventory && setInventory) {
+      const componentNames = FLIP_COMPONENTS
+        .map(c => form[c.key]?.trim())
+        .filter(Boolean)
+        .map(n => n.toLowerCase())
+      if (componentNames.length > 0) {
+        setInventory(prev => prev.map(item => {
+          if (item.status !== 'In Build') return item
+          const itemName = item.partName.toLowerCase()
+          const matched  = componentNames.some(n => n.includes(itemName) || itemName.includes(n))
+          return matched ? { ...item, status: 'Sold', linkedBuildId: String(flipId) } : item
+        }))
+      }
+    }
+
     setForm(EMPTY_FORM)
     setShowForm(false)
   }

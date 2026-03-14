@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { pcppCategoryUrl, amazonUrl, runCompatibilityChecks, getRowChecks, getRowStatus } from '../utils/compatibility'
 import AutocompleteInput from './AutocompleteInput'
@@ -61,9 +61,39 @@ function CompatBadge({ partKey, allChecks }) {
   )
 }
 
-export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPrice, setFlips, navigateTo }) {
-  const [copied, setCopied] = useState(false)
-  const [logged, setLogged] = useState(false)
+// Maps build part key → inventory partType label
+const KEY_TO_INV_TYPE = {
+  cpu: 'CPU', gpu: 'GPU', motherboard: 'Motherboard', ram: 'RAM',
+  storage: 'Storage', psu: 'PSU', cooler: 'CPU Cooler', case: 'Case',
+}
+
+export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPrice, setFlips, navigateTo, inventory, setInventory }) {
+  const [copied,      setCopied]      = useState(false)
+  const [logged,      setLogged]      = useState(false)
+  const [invDropdown, setInvDropdown] = useState(null) // key of open inventory dropdown
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!invDropdown) return
+    const handler = () => setInvDropdown(null)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [invDropdown])
+
+  const getInvOptions = (partKey) => {
+    const invType = KEY_TO_INV_TYPE[partKey]
+    if (!invType || !inventory) return []
+    return inventory.filter(i => i.partType === invType && i.status === 'In Stock')
+  }
+
+  const selectFromInventory = (partKey, item, e) => {
+    e.stopPropagation()
+    updatePart(partKey, 'name', item.partName)
+    setInventory(prev => prev.map(i =>
+      i.id === item.id ? { ...i, status: 'In Build', linkedBuildId: 'current' } : i
+    ))
+    setInvDropdown(null)
+  }
 
   const updatePart = (key, field, value) => {
     setBuild(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
@@ -171,6 +201,26 @@ export default function BuildBuilder({ build, setBuild, askingPrice, setAskingPr
                   placeholder={placeholder}
                   className="input-mono"
                 />
+                {getInvOptions(key).length > 0 && (
+                  <div className="inv-from-wrap" onMouseDown={e => e.stopPropagation()}>
+                    <button
+                      className="inv-from-btn"
+                      onClick={e => { e.stopPropagation(); setInvDropdown(invDropdown === key ? null : key) }}
+                    >
+                      📦 From Inventory ({getInvOptions(key).length})
+                    </button>
+                    {invDropdown === key && (
+                      <div className="inv-from-dropdown">
+                        {getInvOptions(key).map(item => (
+                          <button key={item.id} className="inv-from-option" onMouseDown={e => selectFromInventory(key, item, e)}>
+                            <span className="inv-opt-name">{item.partName}</span>
+                            <span className="inv-opt-meta">{item.condition} · ${parseFloat(item.pricePaid || 0).toFixed(2)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="part-paid-cell">

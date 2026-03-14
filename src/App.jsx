@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import BuildBuilder from './components/BuildBuilder'
 import FlipTracker from './components/FlipTracker'
 import CustomerSpecPage from './components/CustomerSpecPage'
+import InventoryTracker from './components/InventoryTracker'
 
 const DEFAULT_BUILD = {
   cpu:         { name: '', paid: '' },
@@ -22,9 +23,10 @@ function getInitialView() {
 }
 
 const NAV_TABS = [
-  { id: 'builder', label: 'Build Builder', icon: '🔧' },
-  { id: 'tracker', label: 'Flip Tracker',  icon: '📊' },
-  { id: 'customer',label: 'Customer Page', icon: '🛍️' },
+  { id: 'builder',   label: 'Build Builder', icon: '🔧' },
+  { id: 'tracker',   label: 'Flip Tracker',  icon: '📊' },
+  { id: 'inventory', label: 'Inventory',      icon: '📦' },
+  { id: 'customer',  label: 'Customer Page',  icon: '🛍️' },
 ]
 
 function loadFromStorage(key, fallback) {
@@ -99,6 +101,7 @@ export default function App() {
   const [build, setBuild]             = useState(() => loadFromStorage('pfs_build', DEFAULT_BUILD))
   const [askingPrice, setAskingPrice] = useState(() => loadFromStorage('pfs_asking', ''))
   const [flips, setFlips]             = useState(() => loadFromStorage('pfs_flips', []))
+  const [inventory, setInventory]     = useState(() => loadFromStorage('pfs_inventory', []))
   // Use localStorage override if set, otherwise fall back to the env var baked in at build time.
   // This means customers who open a shared link get the embedded video automatically —
   // the env var is bundled into the deployed build on Vercel.
@@ -110,7 +113,8 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem('pfs_build',   JSON.stringify(build)) },         [build])
   useEffect(() => { localStorage.setItem('pfs_asking',  JSON.stringify(askingPrice)) },   [askingPrice])
-  useEffect(() => { localStorage.setItem('pfs_flips',   JSON.stringify(flips)) },         [flips])
+  useEffect(() => { localStorage.setItem('pfs_flips',     JSON.stringify(flips)) },       [flips])
+  useEffect(() => { localStorage.setItem('pfs_inventory', JSON.stringify(inventory)) }, [inventory])
   useEffect(() => { localStorage.setItem('pfs_yt_key',  JSON.stringify(youtubeApiKey)) }, [youtubeApiKey])
 
   useEffect(() => {
@@ -149,8 +153,11 @@ export default function App() {
               >
                 <span className="nav-icon">{tab.icon}</span>
                 <span className="nav-label">{tab.label}</span>
-                {tab.id === 'tracker' && flips.length > 0 && (
+                {tab.id === 'tracker'   && flips.length > 0 && (
                   <span className="nav-badge">{flips.length}</span>
+                )}
+                {tab.id === 'inventory' && inventory.filter(i => i.status === 'In Stock').length > 0 && (
+                  <span className="nav-badge">{inventory.filter(i => i.status === 'In Stock').length}</span>
                 )}
               </button>
             ))}
@@ -175,10 +182,25 @@ export default function App() {
             setAskingPrice={setAskingPrice}
             setFlips={setFlips}
             navigateTo={navigateTo}
+            inventory={inventory}
+            setInventory={setInventory}
           />
         )}
         {view === 'tracker' && (
-          <FlipTracker flips={flips} setFlips={setFlips} />
+          <FlipTracker
+            flips={flips}
+            setFlips={setFlips}
+            inventory={inventory}
+            setInventory={setInventory}
+          />
+        )}
+        {view === 'inventory' && (
+          <InventoryTracker
+            inventory={inventory}
+            setInventory={setInventory}
+            navigateTo={navigateTo}
+            setBuild={setBuild}
+          />
         )}
         {view === 'customer' && (
           <CustomerSpecPage
