@@ -2,13 +2,22 @@ import { useState, useRef, useEffect } from 'react'
 import { getSuggestions } from '../data/parts'
 
 export default function AutocompleteInput({ partKey, value, onChange, placeholder, className }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]             = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
-  const wrapRef = useRef(null)
+  const [dropUp, setDropUp]         = useState(false)
+  const wrapRef  = useRef(null)
   const inputRef = useRef(null)
 
   const suggestions = getSuggestions(partKey, value)
   const showDropdown = open && suggestions.length > 0
+
+  // Determine whether to open up or down based on available space
+  const checkFlip = () => {
+    if (!wrapRef.current) return
+    const rect = wrapRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    setDropUp(spaceBelow < 220)
+  }
 
   // Close when clicking outside
   useEffect(() => {
@@ -55,12 +64,12 @@ export default function AutocompleteInput({ partKey, value, onChange, placeholde
         value={value}
         autoComplete="off"
         spellCheck={false}
-        onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(-1) }}
-        onFocus={() => { if (value) setOpen(true) }}
+        onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(-1); checkFlip() }}
+        onFocus={() => { if (value) { setOpen(true); checkFlip() } }}
         onKeyDown={onKeyDown}
       />
       {showDropdown && (
-        <ul className="autocomplete-dropdown">
+        <ul className={`autocomplete-dropdown ${dropUp ? 'drop-up' : ''}`}>
           {suggestions.map((name, i) => (
             <li
               key={name}

@@ -1404,6 +1404,11 @@ input[type="number"] { -moz-appearance: textfield; }
   overflow-y: auto;
 }
 
+.autocomplete-dropdown.drop-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .autocomplete-item {
   padding: 9px 12px;
   font-family: var(--mono);
