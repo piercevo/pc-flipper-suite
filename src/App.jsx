@@ -4,7 +4,7 @@ import FlipTracker from './components/FlipTracker'
 import CustomerSpecPage from './components/CustomerSpecPage'
 import InventoryTracker from './components/InventoryTracker'
 import AuthGate from './components/AuthGate'
-import { supabase } from './lib/supabase'
+import { supabase, supabaseReady } from './lib/supabase'
 
 const DEFAULT_BUILD = {
   cpu:         { name: '', paid: '' },
@@ -120,6 +120,11 @@ export default function App() {
 
   // ── Auth listener ─────────────────────────────────────────────────────
   useEffect(() => {
+    if (!supabaseReady) {
+      // No Supabase config — run in localStorage-only mode, skip auth
+      setAuthLoading(false)
+      return
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setAuthLoading(false)
@@ -132,7 +137,7 @@ export default function App() {
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
-    if (!user) return
+    if (!user || !supabaseReady) return
     setDataLoading(true)
     supabase
       .from('user_data')
@@ -167,7 +172,7 @@ export default function App() {
 
   // ── Sync build + asking to Supabase (debounced — changes on every key) ─
   useEffect(() => {
-    if (!user || dataLoading) return
+    if (!user || dataLoading || !supabaseReady) return
     const t = setTimeout(() => {
       setSyncing(true)
       supabase.from('user_data')
@@ -179,7 +184,7 @@ export default function App() {
 
   // ── Sync flips to Supabase ─────────────────────────────────────────────
   useEffect(() => {
-    if (!user || dataLoading) return
+    if (!user || dataLoading || !supabaseReady) return
     setSyncing(true)
     supabase.from('user_data')
       .upsert({ user_id: user.id, flips, updated_at: new Date().toISOString() })
@@ -188,7 +193,7 @@ export default function App() {
 
   // ── Sync inventory to Supabase ─────────────────────────────────────────
   useEffect(() => {
-    if (!user || dataLoading) return
+    if (!user || dataLoading || !supabaseReady) return
     setSyncing(true)
     supabase.from('user_data')
       .upsert({ user_id: user.id, inventory, updated_at: new Date().toISOString() })
@@ -197,7 +202,7 @@ export default function App() {
 
   // ── Sync YouTube key to Supabase ───────────────────────────────────────
   useEffect(() => {
-    if (!user || dataLoading) return
+    if (!user || dataLoading || !supabaseReady) return
     supabase.from('user_data')
       .upsert({ user_id: user.id, yt_key: youtubeApiKey, updated_at: new Date().toISOString() })
   }, [youtubeApiKey, user, dataLoading])
@@ -233,8 +238,8 @@ export default function App() {
   // Show a blank screen while checking auth (avoids flash of login page)
   if (authLoading) return <div className="auth-gate"><div className="auth-loading">⚡</div></div>
 
-  // Show login page for non-customer views when not signed in
-  if (!user && !isCustomerView) return <AuthGate />
+  // Show login page only when Supabase is configured and user isn't signed in
+  if (supabaseReady && !user && !isCustomerView) return <AuthGate />
 
   return (
     <div className="app-root">
@@ -272,14 +277,14 @@ export default function App() {
               <span>⚙</span>
               <span className="nav-label">Settings</span>
             </button>
-            {user && (
+            {supabaseReady && user && (
               <div className="sidebar-user">
                 <span className="user-email" title={user.email}>{user.email}</span>
                 <button className="signout-btn" onClick={signOut}>Sign out</button>
               </div>
             )}
             <div className="footer-note">
-              {syncing ? '↑ Syncing…' : '✓ Synced'}
+              {!supabaseReady ? 'Local storage only' : syncing ? '↑ Syncing…' : '✓ Synced'}
             </div>
           </div>
         </nav>
